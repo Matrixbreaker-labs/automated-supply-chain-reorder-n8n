@@ -1,0 +1,185 @@
+{
+  "name": "Automated Supply Chain Reorder System",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24
+            }
+          ]
+        }
+      },
+      "id": "1ca88d5e-527f-4945-a58d-aba226b72a5c",
+      "name": "Daily Inventory Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -128,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// গুগল শিট থেকে আসা সব সারি (Rows) সংগ্রহ করা\nconst items = $input.all();\n\nreturn items.map(row => {\n  const data = row.json;\n  const stock = Number(data.current_stock);\n  const rop = Number(data.reorder_point);\n\n  return {\n    json: {\n      sku: data.sku,\n      item: data.item,\n      current_stock: stock,\n      reorder_point: rop,\n      vendor_email: data.vendor_email,\n      status: stock <= rop ? \"REORDER_NEEDED\" : \"SUFFICIENT\"\n    }\n  };\n});\n"
+      },
+      "id": "b64e53f6-5472-4b5a-8f16-d3a0184486e7",
+      "name": "Fetch & Calculate ROP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.current_stock }}",
+              "operation": "smallerEqual",
+              "value2": "={{ $json.reorder_point }}"
+            }
+          ]
+        }
+      },
+      "id": "7d81df9d-3866-4142-81d2-f87918547e17",
+      "name": "Check Low Stock",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        560,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "models/gemini-3-flash-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Write a formal Purchase Order (PO) email to the vendor for this low-stock product:\nProduct: {{ $json.item }} (SKU: {{ $json.sku }})\nCurrent Stock: {{ $json.current_stock }} | Reorder Point: {{ $json.reorder_point }}\nRequest immediate restocking of 500 units and ask for delivery confirmation.\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        784,
+        16
+      ],
+      "id": "0e762e66-0a9c-4f4d-95d4-3cb580043dbf",
+      "name": "Message a model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "b2bVDEYSTI4j0LvO",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1-OaDLASqqT4rLXtKilozimysxkrgpWQVeaFp8uyu83M",
+          "mode": "list",
+          "cachedResultName": "Supply_Chain_Inventory",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-OaDLASqqT4rLXtKilozimysxkrgpWQVeaFp8uyu83M/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-OaDLASqqT4rLXtKilozimysxkrgpWQVeaFp8uyu83M/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        96,
+        54.221519866697236
+      ],
+      "id": "63f0b5f0-7d19-45ca-9af3-619e17d94d9a",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "eEArH0BmKqt9QM7A",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily Inventory Check": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch & Calculate ROP": {
+      "main": [
+        [
+          {
+            "node": "Check Low Stock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Low Stock": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Fetch & Calculate ROP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "f304d52d-8cef-408c-ac0d-6fa8dde7c39d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "4b531d4fdb182e5171a16efd2a55248f2ca0dd788ada26624d899905b4b7f8e2"
+  },
+  "nodeGroups": [],
+  "id": "H3hEuUNTJfDg9Dgw",
+  "tags": []
+}
