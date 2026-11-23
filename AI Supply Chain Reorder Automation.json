@@ -1,0 +1,197 @@
+{
+  "name": "AI Supply Chain Reorder Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -320,
+        0
+      ],
+      "id": "a29282f8-a95a-4709-bea7-d3af84e1fc12",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst inventory = [\n  { part_number: \"FILTER-001\", description: \"Aircraft Filter\", stock: 5, reorder_level: 10, unit_price: 120 },\n  { part_number: \"SEAL-002\", description: \"Rubber Seal\", stock: 25, reorder_level: 10, unit_price: 15 },\n  { part_number: \"LAMP-003\", description: \"Cabin Lamp\", stock: 2, reorder_level: 5, unit_price: 45 },\n];\n\nreturn inventory.map(item => ({\n  json: {\n    ...item,\n    status: item.stock <= item.reorder_level ? \"REORDER REQUIRED\" : \"STOCK OK\",\n    suggested_order_quantity: Math.max(0, item.reorder_level * 2 - item.stock)\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        0
+      ],
+      "id": "e3f4e55b-7456-40d8-83fc-faaad878aba6",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "0e5c5784-b522-43af-b7f7-9da70062625f",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "REORDER REQUIRED",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        16,
+        0
+      ],
+      "id": "2873c30f-7697-4503-badd-a59f8d7651a4",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f8514d84-461a-4e69-a2c9-d618fb3c6264",
+              "name": "Alert",
+              "value": "LOW STOCK - REORDER REQUIRED",
+              "type": "string"
+            },
+            {
+              "id": "7c75559d-d89d-4105-a3a9-0581d595aa8f",
+              "name": "Part Number",
+              "value": "={{ $json.part_number }}",
+              "type": "string"
+            },
+            {
+              "id": "7d1fed57-883a-4238-b61d-ee65c131efe5",
+              "name": "Order Quantity",
+              "value": "={{ $json.suggested_order_quantity }}",
+              "type": "string"
+            },
+            {
+              "id": "215af0ff-ad8b-491a-ab90-7d19990897aa",
+              "name": "",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        240,
+        -80
+      ],
+      "id": "ae6de90a-15aa-404d-99f8-3973823ca44c",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "sendTo": "jenniraonlineshop@gmail.com",
+        "subject": "Inventory Reorder Alert",
+        "emailType": "text",
+        "message": "=LOW STOCK ALERT\n\nPart Number: {{ $json[\"Part Number\"] }}\nAlert: {{ $json.Alert }}\nSuggested Order Quantity: {{ $json[\"Order Quantity\"] }}\n\nPlease review the inventory and arrange replenishment.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        464,
+        -80
+      ],
+      "id": "b098a276-50d5-4285-a82d-a021e02acb7d",
+      "name": "Send a message",
+      "webhookId": "be9b9b34-e70c-4693-9b10-458157a44762",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "KGBJL2PpwX94V1iA",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "670039e1-3e10-4b43-89b7-a78951b6aa96",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "4b531d4fdb182e5171a16efd2a55248f2ca0dd788ada26624d899905b4b7f8e2"
+  },
+  "nodeGroups": [],
+  "id": "cDQORj8iULhuaN6F",
+  "tags": []
+}
