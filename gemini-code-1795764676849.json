@@ -1,0 +1,172 @@
+{
+  "name": "Automated Supply Chain Reorder System v2",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24
+            }
+          ]
+        }
+      },
+      "id": "1ca88d5e-527f-4945-a58d-aba226b72a5c",
+      "name": "Daily Inventory Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -240,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1-OaDLASqqT4rLXtKilozimysxkrgpWQVeaFp8uyu83M",
+          "mode": "list",
+          "cachedResultName": "Supply_Chain_Inventory",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-OaDLASqqT4rLXtKilozimysxkrgpWQVeaFp8uyu83M/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-OaDLASqqT4rLXtKilozimysxkrgpWQVeaFp8uyu83M/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -16,
+        16
+      ],
+      "id": "63f0b5f0-7d19-45ca-9af3-619e17d94d9a",
+      "name": "Get Inventory Rows",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "eEArH0BmKqt9QM7A",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// গুগল শিট থেকে আসা সব সারি (Rows) প্রসেস করা\nconst items = $input.all();\n\nreturn items.map(row => {\n  const data = row.json;\n  const stock = Number(data.current_stock || 0);\n  const rop = Number(data.reorder_point || 0);\n  const orderQty = Number(data.reorder_qty || 500);\n  const currentStatus = (data.status || \"\").toUpperCase();\n\n  // যদি স্টক কম থাকে এবং ইতিমধ্যে অর্ডার করা না হয়ে থাকে\n  const needsReorder = (stock <= rop) && (currentStatus !== \"ORDERED\");\n\n  return {\n    json: {\n      row_number: data.row_number,\n      sku: data.sku,\n      item: data.item,\n      current_stock: stock,\n      reorder_point: rop,\n      reorder_qty: orderQty,\n      vendor_email: data.vendor_email,\n      needs_reorder: needsReorder,\n      status: needsReorder ? \"REORDER_NEEDED\" : (currentStatus === \"ORDERED\" ? \"ORDERED\" : \"SUFFICIENT\")\n    }\n  };\n});"
+      },
+      "id": "b64e53f6-5472-4b5a-8f16-d3a0184486e7",
+      "name": "Calculate ROP & Check Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.needs_reorder }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "7d81df9d-3866-4142-81d2-f87918547e17",
+      "name": "Filter Items to Reorder",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        432,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "models/gemini-3-flash-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a Supply Chain Procurement Manager. Write a formal Purchase Order (PO) email for this low-stock product.\n\nProduct: {{ $json.item }}\nSKU: {{ $json.sku }}\nCurrent Stock: {{ $json.current_stock }}\nOrder Quantity: {{ $json.reorder_qty }} units\n\nReturn ONLY a valid JSON object with two keys: \"subject\" and \"body\" (HTML formatted body). Do not include markdown formatting like ```json."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        656,
+        -64
+      ],
+      "id": "0e762e66-0a9c-4f4d-95d4-3cb580043dbf",
+      "name": "Draft PO Email (Gemini)",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "b2bVDEYSTI4j0LvO",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst prevItems =$('Filter Items to Reorder').all();\n\nreturn items.map((item, index) => {\n  let rawText = item.json.content?.parts?.[0]?.text || item.json.text || \"{}\";\n  rawText = rawText.replace(/```json/g, \"\").replace(/```/g, \"\").trim();\n  \n  let parsed = { subject: \"Purchase Order Request\", body: rawText };\n  try {\n    parsed = JSON.parse(rawText);\n  } catch (e) {\n    // Fallback if not strict JSON\n  }\n\n  const originalData = prevItems[index].json;\n\n  return {\n    json: {\n      ...originalData,\n      email_subject: parsed.subject,\n      email_body: parsed.body,\n      order_date: new Date().toISOString().split('T')[0]\n    }\n  };\n});"
+      },
+      "id": "c9a12b34-89ef-45ab-90cd-1234567890ab",
+      "name": "Parse Email JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.vendor_email }}",
+        "subject": "={{ $json.email_subject }}",
+        "message": "={{ $json.email_body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1104,
+        -64
+      ],
+      "id": "d1e2f3a4-b5c6-7890-1234-567890abcdef",
+      "name": "Send PO to Vendor",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CRED_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1-OaDLASqqT4rLXtKilozimysxkrgpWQVeaFp8uyu83M",
+          "mode": "list",
+          "cachedResultName": "Supply_Chain_Inventory"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1"
+        },
+        "columns
